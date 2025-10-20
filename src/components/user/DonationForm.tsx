@@ -6,6 +6,13 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
+import { z } from "zod";
+
+const donationSchema = z.object({
+  amount: z.number().positive("Amount must be greater than 0").max(1000000, "Amount must be less than 1,000,000"),
+  donorName: z.string().trim().min(1, "Name is required").max(255, "Name must be less than 255 characters"),
+  fundraiserId: z.string().uuid("Please select a fundraiser"),
+});
 
 interface DonationFormProps {
   userId: string;
@@ -52,13 +59,20 @@ export const DonationForm = ({ userId }: DonationFormProps) => {
     setLoading(true);
 
     try {
+      // Validate input
+      const validated = donationSchema.parse({
+        amount: parseFloat(amount),
+        donorName: isAnonymous ? "Anonymous" : donorName,
+        fundraiserId: selectedFundraiser,
+      });
+
       const { error } = await supabase
         .from("donations")
         .insert({
-          fundraiser_id: selectedFundraiser,
+          fundraiser_id: validated.fundraiserId,
           donor_user_id: userId,
-          donor_name: isAnonymous ? "Anonymous" : donorName,
-          amount: parseFloat(amount),
+          donor_name: validated.donorName,
+          amount: validated.amount,
           is_anonymous: isAnonymous,
         });
 
@@ -72,11 +86,19 @@ export const DonationForm = ({ userId }: DonationFormProps) => {
       setAmount("");
       setSelectedFundraiser("");
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      if (error instanceof z.ZodError) {
+        toast({
+          title: "Validation Error",
+          description: error.errors[0].message,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -114,7 +136,8 @@ export const DonationForm = ({ userId }: DonationFormProps) => {
           id="amount"
           type="number"
           step="0.01"
-          min="1"
+          min="0.01"
+          max="1000000"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
           placeholder="Enter amount"
@@ -129,7 +152,8 @@ export const DonationForm = ({ userId }: DonationFormProps) => {
           value={donorName}
           onChange={(e) => setDonorName(e.target.value)}
           placeholder="Your name"
-          required
+          maxLength={255}
+          required={!isAnonymous}
           disabled={isAnonymous}
         />
       </div>

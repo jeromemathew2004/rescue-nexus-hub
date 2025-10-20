@@ -6,6 +6,13 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { X } from "lucide-react";
+import { z } from "zod";
+
+const volunteerSchema = z.object({
+  location: z.string().trim().min(1, "Location is required").max(255, "Location must be less than 255 characters"),
+  availability: z.string().trim().min(1, "Availability is required").max(255, "Availability must be less than 255 characters"),
+  skills: z.array(z.string()).min(1, "At least one skill is required"),
+});
 
 interface VolunteerRegistrationFormProps {
   userId: string;
@@ -68,13 +75,20 @@ export const VolunteerRegistrationForm = ({ userId }: VolunteerRegistrationFormP
     setLoading(true);
 
     try {
+      // Validate input
+      const validated = volunteerSchema.parse({
+        location,
+        availability,
+        skills,
+      });
+
       if (existing) {
         const { error } = await supabase
           .from("volunteers")
           .update({
-            skills,
-            location,
-            availability,
+            skills: validated.skills,
+            location: validated.location,
+            availability: validated.availability,
           })
           .eq("id", existing.id);
 
@@ -89,9 +103,9 @@ export const VolunteerRegistrationForm = ({ userId }: VolunteerRegistrationFormP
           .from("volunteers")
           .insert({
             user_id: userId,
-            skills,
-            location,
-            availability,
+            skills: validated.skills,
+            location: validated.location,
+            availability: validated.availability,
           });
 
         if (error) throw error;
@@ -104,11 +118,19 @@ export const VolunteerRegistrationForm = ({ userId }: VolunteerRegistrationFormP
 
       loadExistingProfile();
     } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
+      if (error instanceof z.ZodError) {
+        toast({
+          title: "Validation Error",
+          description: error.errors[0].message,
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Error",
+          description: error.message,
+          variant: "destructive",
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -137,6 +159,7 @@ export const VolunteerRegistrationForm = ({ userId }: VolunteerRegistrationFormP
             value={newSkill}
             onChange={(e) => setNewSkill(e.target.value)}
             placeholder="Add custom skill..."
+            maxLength={100}
             onKeyPress={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -174,6 +197,7 @@ export const VolunteerRegistrationForm = ({ userId }: VolunteerRegistrationFormP
           value={location}
           onChange={(e) => setLocation(e.target.value)}
           placeholder="Your location"
+          maxLength={255}
           required
         />
       </div>
@@ -185,6 +209,7 @@ export const VolunteerRegistrationForm = ({ userId }: VolunteerRegistrationFormP
           value={availability}
           onChange={(e) => setAvailability(e.target.value)}
           placeholder="e.g., Weekends, Full-time, On-call"
+          maxLength={255}
           required
         />
       </div>
